@@ -1,12 +1,11 @@
 # LogiStock SA : application de gestion intégrée
 
 Application web de gestion (stocks, clients, ventes, tableau de bord) du projet fil rouge.
-**État actuel** : authentification / RBAC, stocks, clients, ventes avec facture PDF.
-À venir : tableau de bord KPI.
+**État actuel** : les 7 fonctions du cahier des charges (F1 à F7) : authentification / RBAC, produits, mouvements, clients, ventes avec facture PDF, alertes et tableau de bord KPI.
 
 | Couche | Technologie |
 |---|---|
-| Interface web | HTML5, CSS3, JavaScript (sans framework), servie par Nginx |
+| Interface web | Angular 18 (TypeScript), compilée dans Docker puis servie par Nginx |
 | API REST | Java 21, Spring Boot 3.3, Spring Security (JWT), JDBC |
 | Base de données | PostgreSQL 16 (scripts dans `db/`) |
 | Déploiement | Docker et Docker Compose (3 services) |
@@ -16,10 +15,11 @@ Application web de gestion (stocks, clients, ventes, tableau de bord) du projet 
 | Membre | Rôle |
 |---|---|
 | Anthioumana Boiguile | Product Owner |
-| Ahmed Keita | Scrum Master |
-| Bakoro Coulibaly | Développeur |
+| Ahmad Keita | Scrum Master |
 | Abdoulaye Sanogo | Développeur |
-| Mariam Cisse | Développeuse |
+| Mariam Show | Développeuse |
+| Mohamed Dramé | Développeur |
+| Safiatou Sanogo | Développeuse |
 
 Le Product Owner et le Scrum Master développent aussi, comme le prévoit le sujet.
 
@@ -29,6 +29,8 @@ Le Product Owner et le Scrum Master développent aussi, comme le prévoit le suj
 2. Dézippez le projet.
 3. **Windows** : double-cliquez sur `start.bat`. **Mac / Linux** : exécutez `./start.sh`.
 4. Le navigateur s'ouvre sur <http://localhost:8081> : connectez-vous avec un compte de démonstration (ci-dessous).
+
+> Le premier démarrage compile l'interface Angular : **Internet est nécessaire** et cela prend plusieurs minutes. Les suivants sont rapides.
 
 Pour arrêter : `stop.bat` (Windows) ou `./stop.sh` (Mac / Linux).
 
@@ -70,6 +72,7 @@ Les droits sont contrôlés côté serveur, sur chaque endpoint (`@PreAuthorize`
 | Produits et catégories : écriture | oui | oui | non |
 | Mouvements de stock | oui | oui | non |
 | Alertes de stock | oui | oui | oui |
+| Tableau de bord KPI (F7) | oui | oui | oui |
 | Clients (F4) | oui | non | oui |
 | Ventes et factures PDF (F5) | oui | non | oui |
 
@@ -89,6 +92,7 @@ Les droits sont contrôlés côté serveur, sur chaque endpoint (`@PreAuthorize`
 | `POST PUT DELETE /api/produits` | admin, gestionnaire | Gérer les produits |
 | `GET POST /api/mouvements` | admin, gestionnaire | Historique, nouvelle entrée ou sortie |
 | `GET /api/alertes` | tous | Produits en rupture ou sous leur seuil |
+| `GET /api/kpi` | tous | CA du jour et du mois, comparaison avec le mois précédent, valeur du stock, alertes, CA par jour, produits les plus vendus, mouvements de la semaine |
 | `GET POST /api/clients` | admin, commercial | Recherche (`?q=`), création |
 | `GET PUT DELETE /api/clients/{id}` | admin, commercial | Fiche, modification, suppression (refusée si le client a des commandes) |
 | `GET /api/commandes?statut=&client=` | admin, commercial | Liste des ventes |
@@ -112,6 +116,7 @@ Dans Swagger, utilisez le bouton « Authorize » avec le jeton reçu au login.
 - Le prix de chaque ligne est celui du produit au moment de la vente, lu par le serveur.
 - Une facture est numérotée `FAC-AAAA-00000`, unique, et liée à une seule vente.
 - Un client qui a des commandes ne peut pas être supprimé.
+- Le chiffre d'affaires ne compte que les ventes validées (ni brouillons, ni ventes annulées).
 - Un compte désactivé perd l'accès immédiatement ; un administrateur ne peut pas désactiver son propre compte.
 - Mots de passe hachés en BCrypt, requêtes SQL paramétrées, jetons JWT signés (expiration : 8 h).
 
@@ -122,7 +127,7 @@ cd backend
 mvn test
 ```
 
-Les tests actuels couvrent le jeton JWT (valide, falsifié, mauvais secret, expiré), la correspondance des rôles et le format des montants des factures.
+Les tests actuels couvrent le jeton JWT (valide, falsifié, mauvais secret, expiré), la correspondance des rôles, le format des montants des factures et le calcul de la variation mensuelle du chiffre d'affaires.
 Les règles de vente (refus si stock insuffisant) sont testées au niveau SQL (fonction `valider_commande`).
 
 ## Configuration
@@ -135,7 +140,7 @@ Variables d'environnement lues par `docker-compose.yml` (à mettre dans un fichi
 | `DB_PASSWORD` | logistock_dev |
 | `JWT_SECRET` | secret de développement (32 caractères minimum) |
 
-## Organisation du dépôt (GitFlow)
+## Organisation du projet
 
 ```
 logistock/
@@ -155,18 +160,13 @@ logistock/
 │       ├── catalogue/       produits et catégories
 │       ├── stock/           mouvements et alertes
 │       ├── ventes/          clients, commandes/ventes, facture PDF
+│       ├── kpi/             tableau de bord
 │       └── common/          gestion des erreurs
 └── frontend/              interface web
     ├── Dockerfile, nginx.conf
-    └── web/                 le site : HTML, CSS, JavaScript
-        ├── index.html
-        ├── css/style.css
-        └── js/api.js, app.js
-```
-
-Branches : `main` (versions livrables), `develop` (intégration), `feature/*` (une par fonctionnalité).
-
-```bash
-git checkout -b develop && git push -u origin develop       # une seule fois
-git checkout -b feature/alpha-stocks develop                 # une branche par fonctionnalité
+    └── src/                 application Angular
+        ├── styles.css       palette bleu / blanc / orange
+        └── app/
+            ├── core/        API, session, intercepteur JWT, gardes de rôle
+            └── pages/       un composant par écran
 ```

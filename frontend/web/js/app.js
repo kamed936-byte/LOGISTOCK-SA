@@ -92,7 +92,7 @@ function vueConnexion() {
         body: { email: f.get('email'), motDePasse: f.get('motDePasse') },
       });
       Session.save(rep.token, rep.utilisateur);
-      if (location.hash === '#/produits') route(); else location.hash = '#/produits';
+      if (location.hash === '#/produits') route(); else location.hash = '#/tableau';
     } catch (ex) {
       $('#login-error').textContent = ex.message;
     }
@@ -108,6 +108,7 @@ window.addEventListener('session-expired', deconnexion);
 // ---------- Squelette et navigation ----------
 
 const ROUTES = {
+  '/tableau': { label: 'Tableau de bord', visible: () => true, vue: vueTableau },
   '/produits': { label: 'Produits', visible: () => true, vue: vueProduits },
   '/categories': { label: 'Catégories', visible: () => true, vue: vueCategories },
   '/mouvements': { label: 'Mouvements', visible: canEditStock, vue: vueMouvements },
@@ -147,7 +148,7 @@ async function majBadgeAlertes() {
 
 async function route() {
   if (!Session.token || !Session.user) return vueConnexion();
-  const chemin = location.hash.slice(1) || '/produits';
+  const chemin = location.hash.slice(1) || '/tableau';
   const r = ROUTES[chemin];
   if (!r || !r.visible()) {
     location.hash = '#/produits';
@@ -601,10 +602,9 @@ async function editeurVente(main, id) {
     <div class="card">
       <label>Client *</label>
       <select id="client"><option value="">Choisir un client…</option>${options(clients, 'id', 'nom', existante ? existante.commande.idClient : '')}</select>
-      <div class="inline-form" style="margin-top:14px">
+      <div class="inline-form vente-ajout" style="margin-top:14px">
         <div><label>Produit</label><select id="produit">${produits.map((p) =>
           `<option value="${p.id}">${esc(p.designation)} (stock ${p.quantiteStock}, ${money(p.prix)})</option>`).join('')}</select></div>
-        <div></div>
         <div><label>Quantité</label><input id="qte" type="number" min="1" value="1"></div>
         <button class="btn" id="ajouter" type="button">Ajouter</button>
       </div>
@@ -677,6 +677,58 @@ async function editeurVente(main, id) {
   $('#valider').onclick = () => enregistrer(true);
   $('#retour').onclick = () => agir(vueVentes(main));
   afficher();
+}
+
+// ---------- Tableau de bord KPI (F7) ----------
+
+function graphBarres(donnees, couleur) {
+  // donnees : [{ libelle, valeur }] ; barres en CSS, sans bibliothèque
+  const max = Math.max(1, ...donnees.map((d) => d.valeur));
+  return `<div class="bars">${donnees.map((d) =>
+    `<div class="bar-col" title="${esc(d.libelle)} : ${esc(d.texte ?? d.valeur)}">
+       <div class="bar-val">${esc(d.court ?? '')}</div>
+       <div class="bar ${couleur || ''}" style="height:${Math.max(2, Math.round(d.valeur / max * 100))}%"></div>
+       <div class="bar-lbl">${esc(d.libelle)}</div></div>`).join('')}</div>`;
+}
+
+async function vueTableau(main) {
+  const k = await api('/kpi');
+  const jj = (s) => new Date(s + 'T00:00:00').toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
+  const v = k.variationMoisPct;
+  const variation = v === null || v === undefined
+    ? '<span class="muted">pas de ventes le mois précédent</span>'
+    : `<span class="tag ${v >= 0 ? 'ok' : 'danger'}">${v >= 0 ? '+' : ''}${String(v).replace('.', ',')} % vs mois précédent</span>`;
+
+  main.innerHTML = `
+    <div class="page-head"><h1>Tableau de bord</h1></div>
+    <div class="kpis">
+      <div class="card kpi"><span class="muted">CA du jour</span><strong>${money(k.caJour)}</strong><small>${k.ventesJour} vente(s)</small></div>
+      <div class="card kpi"><span class="muted">CA du mois</span><strong>${money(k.caMois)}</strong><small>${k.ventesMois} vente(s) · ${variation}</small></div>
+      <div class="card kpi"><span class="muted">CA du mois précédent</span><strong>${money(k.caMoisPrecedent)}</strong></div>
+      <div class="card kpi"><span class="muted">Valeur du stock</span><strong>${money(k.valeurStock)}</strong></div>
+      <div class="card kpi"><span class="muted">Produits en alerte</span><strong>${k.produitsEnAlerte}</strong><small>dont ${k.produitsEnRupture} en rupture</small></div>
+    </div>
+    <div class="grid2">
+      <div class="card"><h2>Chiffre d'affaires par jour (30 derniers jours)</h2>
+        ${k.caParJour.length ? graphBarres(k.caParJour.map((d) => ({ libelle: jj(d.jour), valeur: Number(d.chiffreAffaires),
+          texte: money(d.chiffreAffaires) + ' (' + d.nbVentes + ' vente(s))' }))) : '<div class="empty">Aucune vente validée sur la période.</div>'}</div>
+      <div class="card"><h2>Mouvements de la semaine</h2>
+        <p class="muted legend"><span class="dot in"></span>Entrées <span class="dot out"></span>Sorties</p>
+        <div class="bars two">${k.mouvementsSemaine.map((d) => {
+          const max = Math.max(1, ...k.mouvementsSemaine.map((x) => Math.max(x.entrees, x.sorties)));
+          return `<div class="bar-col" title="${jj(d.jour)} : ${d.entrees} entrée(s), ${d.sorties} sortie(s)">
+            <div class="pair"><div class="bar in" style="height:${Math.max(2, Math.round(d.entrees / max * 100))}%"></div>
+            <div class="bar out" style="height:${Math.max(2, Math.round(d.sorties / max * 100))}%"></div></div>
+            <div class="bar-lbl">${jj(d.jour)}</div></div>`;
+        }).join('')}</div>
+        <p class="muted">Total : ${k.mouvementsSemaine.reduce((a, d) => a + d.entrees, 0)} entrées, ${k.mouvementsSemaine.reduce((a, d) => a + d.sorties, 0)} sorties.</p></div>
+    </div>
+    <h2>Produits les plus vendus</h2>
+    <div class="table-wrap">${tableau(
+      ['<th>#</th>', '<th>Référence</th>', '<th>Désignation</th>', '<th class="num">Quantité vendue</th>', '<th class="num">CA</th>'],
+      k.topProduits.map((p, i) => `<tr><td>${i + 1}</td><td>${esc(p.reference)}</td><td>${esc(p.designation)}</td>
+        <td class="num">${p.quantiteVendue}</td><td class="num">${money(p.chiffreAffaires)}</td></tr>`),
+      'Aucune vente validée pour le moment.')}</div>`;
 }
 
 route();
