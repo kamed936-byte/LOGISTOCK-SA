@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # LogiStock SA : application de gestion intégrée
 
 Application web de gestion (stocks, clients, ventes, tableau de bord) du projet fil rouge.
@@ -170,3 +171,7 @@ logistock/
             ├── core/        API, session, intercepteur JWT, gardes de rôle
             └── pages/       un composant par écran
 ```
+=======
+# LOGISTOCK-SA
+App web de gestion simple de vente
+>>>>>>> ca7dddf0979da88520c27052b0eed369bf87cb0e
